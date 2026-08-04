@@ -1,12 +1,16 @@
 /*
 ==================================================================
 Data Analyst Portfolio Project | SQL Data Exploration
-Dataset: COVID-19 Deaths Data
-Table: CovidDeaths31.7.26
+Dataset: COVID-19 Deaths & Vaccinations Data
+Tables: [CovidDeaths31.7.26], [covid vaccinations]
 Database: CovidProject
 Author: Ravalika
 Note: All numeric columns were imported as text (nvarchar), so
       CAST() is used throughout to convert them for calculations.
+Note: dea.date is stored as text in DD-MM-YYYY format; vac.date
+      is stored as text in YYYY-MM-DD format. A helper column
+      date_converted (real date type) was added to the
+      vaccinations table to make joining reliable.
 ==================================================================
 */
 
@@ -74,6 +78,47 @@ ORDER BY date;
 
 /*
 ==================================================================
+PART 2: VACCINATIONS - JOINS & WINDOW FUNCTIONS
+==================================================================
+*/
+
+-- 8. Prep step: add a clean, real date column to the vaccinations
+--    table so it can be reliably joined against CovidDeaths.
+ALTER TABLE [covid vaccinations]
+ADD date_converted date;
+
+UPDATE [covid vaccinations]
+SET date_converted = TRY_CONVERT(date, date, 23);
+
+
+-- 9. JOIN CovidDeaths and CovidVaccinations
+-- Combines both tables on matching location + date
+SELECT dea.location, dea.date, dea.population, vac.new_vaccinations
+FROM [CovidDeaths31.7.26] dea
+JOIN [covid vaccinations] vac
+    ON dea.location = vac.location
+    AND TRY_CONVERT(date, dea.date, 105) = vac.date_converted
+WHERE dea.location LIKE '%India%'
+ORDER BY TRY_CONVERT(date, dea.date, 105);
+
+
+-- 10. Rolling Vaccination Count (Window Function)
+-- Running total of people vaccinated per country, day by day
+SELECT dea.location, dea.date, dea.population, vac.new_vaccinations,
+    SUM(CAST(vac.new_vaccinations AS bigint)) OVER (
+        PARTITION BY dea.location 
+        ORDER BY TRY_CONVERT(date, dea.date, 105)
+    ) AS RollingPeopleVaccinated
+FROM [CovidDeaths31.7.26] dea
+JOIN [covid vaccinations] vac
+    ON dea.location = vac.location
+    AND TRY_CONVERT(date, dea.date, 105) = vac.date_converted
+WHERE dea.location LIKE '%India%'
+ORDER BY TRY_CONVERT(date, dea.date, 105);
+
+
+/*
+==================================================================
 KEY INSIGHTS FOUND:
 - India's death % was highest early in the pandemic (~2.9% in
   April 2020) and generally trended down as testing expanded
@@ -85,11 +130,13 @@ KEY INSIGHTS FOUND:
   which also made North America the hardest-hit continent overall.
 - Global death % started very high (~7% in April 2020, when
   testing was limited) and fell to roughly 1-2% by late 2020.
+- India's vaccination drive began 16-01-2021, with 191,181 people
+  vaccinated on day one; the rolling total climbs steadily from
+  there with no resets, confirming the window function works
+  correctly.
 
-NEXT STEPS (Part 2 of portfolio project):
-- Import CovidVaccinations.csv
-- JOIN CovidDeaths and CovidVaccinations tables
-- Calculate rolling vaccination count using window functions
-- Visualize findings in Tableau
+NEXT STEPS:
+- Visualize findings in Tableau / Power BI
+- Repeat rolling vaccination analysis for other countries
 ==================================================================
 */
